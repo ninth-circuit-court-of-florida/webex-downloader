@@ -2,9 +2,20 @@
 import * as dotenv from 'dotenv';
 import puppeteer from 'puppeteer-extra';
 import { executablePath } from 'puppeteer';
+import nodemailer from 'nodemailer';
+
 dotenv.config();
 
+const log_space = () => {
+  for (let i = 0; i <= 3; i++) {
+    console.log(''); // make some space
+  }
+};
+
 const startPuppeteer = async () => {
+  await log_space();
+  console.log('==== reassignment started at ' + new Date() + ' ====');
+
   const delay = (milliseconds) =>
     new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -107,17 +118,58 @@ const startPuppeteer = async () => {
   });
 
   const successReassignSelector = '.nbr_successprompt';
-  for (let pagenum = 1; pagenum <= 22; pagenum++) {
-    // don't have a way to know last pagenum
-    await frame.waitForSelector(successReassignSelector).then(async () => {
-      await frame.evaluate((page) => {
-        showPage(page);
-      }, pagenum);
-      await selectAllRecordings();
-    });
+  try {
+    for (let pagenum = 1; pagenum <= 22; pagenum++) {
+      // don't have a way to know last pagenum
+      try {
+        await frame.waitForSelector(successReassignSelector).then(async () => {
+          await frame.evaluate((page) => {
+            showPage(page);
+          }, pagenum);
+          await selectAllRecordings();
+        });
+      } catch (err) {
+        await send_email(err.toString());
+        break;
+      }
+    }
+  } catch (err) {
+    //console.log(err);
+    await send_email(err.toString());
   }
+
   // end stuff
+  console.log('==== reassignment stopped at ' + new Date() + ' ====');
   await browser.close();
 };
 
-startPuppeteer();
+const send_email = async (content) => {
+  console.log('send_email was triggered');
+  let message = {
+    from: `${process.env.MAIL_FROM}`,
+    to: `${process.env.MAIL_TO}`,
+    subject: 'Webex Downloader Error',
+    text: content,
+  };
+
+  let transporter = nodemailer.createTransport({
+    host: `${process.env.SMTP_SERVER}`,
+    port: parseInt(`${process.env.SMTP_PORT}`),
+    secure: process.env.SMTP_SECURE === 'true',
+    ignoreTLS: process.env.SMTP_SECURE === 'false', // have to flip because they use a negative
+    ...(process.env.SMTP_USER.length > 0 && {
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    }),
+  });
+
+  let info = await transporter.sendMail(message);
+
+  console.log('Message sent: %s', info.messageId);
+};
+
+try {
+  startPuppeteer();
+} catch (err) {
+  send_email(err.toString());
+  console.error(err);
+}

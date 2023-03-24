@@ -1,12 +1,12 @@
 'use strict';
 import * as dotenv from 'dotenv';
-dotenv.config();
 import puppeteer from 'puppeteer-extra';
 import UserPreferencesPlugin from 'puppeteer-extra-plugin-user-preferences';
-
-import { executablePath } from 'puppeteer';
 import { default as path } from 'path';
 import fs from 'fs';
+import nodemailer from 'nodemailer';
+
+dotenv.config();
 
 const downloadPath = path.resolve('/recordings');
 
@@ -34,6 +34,8 @@ puppeteer.use(
 );
 
 const startPuppeteer = async () => {
+  await log_space();
+  console.log('==== downloads started at ' + new Date() + ' ====');
   const addLocalJSToPage = async (page) => {
     const fileLocation = new URL('clientsidedownloader.js', import.meta.url);
     const file = fs.readFileSync(fileLocation, 'utf8');
@@ -119,10 +121,11 @@ const startPuppeteer = async () => {
 
   // now to compare the list with download folder and create a queue for which can be deleted and which needs to be downloaded
 
-  const deletableRecordings = [];
-  const downloadQueue = [];
-
   const updateQueues = async () => {
+    const deletableRecordings = [];
+    const downloadQueue = [];
+    const downloadNameQueue = [];
+
     for await (const recording of recordingList) {
       // TODO could find a universal windows and linux regex for invalid chars and strip them
       const recordingName = recording.recordingName
@@ -139,11 +142,19 @@ const startPuppeteer = async () => {
           // console.log(`pushing to download queue recordingId: ${recordingId}`);
           console.log("filepath doesn't exist: ", filePath);
           downloadQueue.push(recordingId);
+          downloadNameQueue.push(recordingName);
         }
       } catch (err) {
         console.error(err);
       }
     }
+
+    const queues = [deletableRecordings, downloadQueue, downloadNameQueue];
+    return queues;
+  };
+
+  const printQueues = (queues) => {
+    const [deletableRecordings, downloadQueue, downloadNameQueue] = queues;
     console.log(`${deletableRecordings.length} deletable recordings`);
     console.log('First 3 recordings to delete:');
     for (let i = 0; i < 3; i++) {
@@ -151,14 +162,15 @@ const startPuppeteer = async () => {
     }
 
     console.log(`${downloadQueue.length} recordings to download`);
-    // console.log("Recordings to download:");
-    // for(let i = 0; i < downloadQueue.length; i++) {
-    //   console.log(downloadQueue[i]);
-    // }
+    console.log('Recordings to download:');
+    for (let i = 0; i < downloadNameQueue.length; i++) {
+      console.log(downloadNameQueue[i]);
+    }
   };
 
   // now to download the recordings
-  const downloadRecording = async (downQueue) => {
+  const downloadRecording = async (queues) => {
+    const [deletableRecordings, downQueue, downloadNameQueue] = queues;
     // console.log(downQueue[0]);
 
     await page.evaluate((queue) => {
@@ -183,39 +195,77 @@ const startPuppeteer = async () => {
     }, downQueue);
   };
 
+  const finalPrintQueues = (queues) => {
+    const [deletableRecordings, downloadQueue, downloadNameQueue] = queues;
+    console.log(
+      'After processing the download queue size is :' + downloadQueue.length
+    );
+    // create email if there are failed downloads
+    let message = `${downloadNameQueue.length} recordings could not download:
+      
+`;
+    for (const name of downloadNameQueue) {
+      message += `${name}`;
+    }
+    console.log(message);
+
+    if (downloadNameQueue.length > 0) {
+      send_email(message);
+    }
+    console.log('==== downloads stopped at ' + new Date() + ' ====');
+  };
   // TODO create and implement delete recordings function
 
-  await updateQueues();
-  await downloadRecording(downloadQueue);
-
-  // this delay is for testing, 4 needs to be changed to downloadQueue.length in the future.
-  delay(12000 * downloadQueue.length).then(() => {
-    deletableRecordings.length = 0; // clear existing
-    downloadQueue.length = 0; // clear existing
-    for (let i = 0; i <= 3; i++) {
-      console.log('');
-    }
-    console.log('After processing queue the results are:');
-    const undownloaded = [];
-    console.log('Recordings that did not download');
-    recordingList.forEach((recording) => {
-      downloadQueue.forEach((recordingId) => {
-        if (recordingId === recording.recordingId) {
-          console.log(recording.recordingName);
-        }
+  await updateQueues().then(async (queues) => {
+    const [deletableRecordings, downloadQueue, downloadNameQueue] = queues;
+    await printQueues(queues);
+    await downloadRecording(queues);
+    // delay to make sure all recordings are downloaded then do final results and close
+    await delay(12000 * downloadQueue.length + 300000).then(async () => {
+      log_space();
+      console.log('==== finalizing downloads ====');
+      await updateQueues().then((queues) => {
+        finalPrintQueues(queues);
+        browser.close();
       });
-      // if (downloadQueue.includes(recording.recordingId)) {
-      //   console.log(recording.recordingName);
-      // }
-      // console.log("recording list id: ", recording.recordingId)
     });
-    downloadQueue.forEach((id) => {
-      console.log(id);
-    });
-    delay(300000);
-    updateQueues();
-    browser.close();
   });
 };
 
-startPuppeteer();
+const log_space = () => {
+  for (let i = 0; i <= 3; i++) {
+    console.log(''); // make some space
+  }
+};
+
+const send_email = async (content) => {
+  console.log('send_email was triggered');
+  let message = {
+    from: `${process.env.MAIL_FROM}`,
+    to: `${process.env.MAIL_TO}`,
+    subject: 'Webex Downloader Error',
+    text: content,
+  };
+
+  let transporter = nodemailer.createTransport({
+    host: `${process.env.SMTP_SERVER}`,
+    port: parseInt(`${process.env.SMTP_PORT}`),
+    secure: process.env.SMTP_SECURE === 'true',
+    ignoreTLS: process.env.SMTP_SECURE === 'false', // have to flip because they use a negative
+    ...(process.env.SMTP_USER.length > 0 && {
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    }),
+  });
+
+  let info = await transporter.sendMail(message);
+
+  console.log('Message sent: %s', info.messageId);
+};
+
+// wrap startPuppeteer in try catch
+try {
+  startPuppeteer();
+} catch (err) {
+  send_email(err.toString());
+  console.error(err);
+}
