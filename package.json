@@ -12,7 +12,7 @@
     "dotenv": "^16.0.3",
     "nodemailer": "^6.9.1",
     "puppeteer": "^19.8.0",
-    "puppeteer-extra": "^3.3.4",
+    "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-user-preferences": "^2.4.1"
   },
   "type": "module",
