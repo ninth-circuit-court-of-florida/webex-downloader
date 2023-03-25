@@ -10,6 +10,43 @@ dotenv.config();
 
 const downloadPath = path.resolve('/recordings');
 
+const isArrayEmpty = (arr) => {
+  return arr.length === 0;
+}
+
+const sanitizeFilename = (filename) => {
+  // Invalid characters for Linux and Windows filenames, including single quote, all whitespace characters except for the normal space, and comma
+  const invalidChars = /(?:\s(?!) |[<>:"\/\\|?*'',])/g;
+  // Replace invalid characters with an empty string
+  const sanitizedFilename = filename.replace(invalidChars, '');
+
+  return sanitizedFilename;
+}
+
+const renameFilesInDirectory = async (directory) => {
+  fs.readdir(directory, (err, files) => {
+    if (err) {
+      console.error('Error reading the directory:', err);
+      return;
+    }
+
+    files.forEach((file) => {
+      const oldPath = path.join(directory, file);
+      const newPath = path.join(directory, sanitizeFilename(file));
+
+      if (oldPath !== newPath) {
+        fs.rename(oldPath, newPath, (err) => {
+          if (err) {
+            console.error('Error renaming file:', err);
+          } else {
+            console.log(`Renamed: ${oldPath} -> ${newPath}`);
+          }
+        });
+      }
+    });
+  });
+}
+
 puppeteer.use(
   UserPreferencesPlugin({
     userPrefs: {
@@ -125,29 +162,30 @@ const startPuppeteer = async () => {
     const deletableRecordings = [];
     const downloadQueue = [];
     const downloadNameQueue = [];
-
-    for await (const recording of recordingList) {
-      // TODO could find a universal windows and linux regex for invalid chars and strip them
-      const recordingName = recording.recordingName
-        .replace(/\//g, '')
-        .replace(/  /g, ' ');
-      const recordingId = recording.recordingId;
-      const filePath = path.join(downloadPath, `${recordingName}.mp4`);
-      // console.log(filePath);
-      try {
-        // console.log(filePath.replace(/'/g, "\\'"));
-        if (await fs.existsSync(filePath)) {
-          deletableRecordings.push(recordingName);
-        } else {
-          // console.log(`pushing to download queue recordingId: ${recordingId}`);
-          console.log("filepath doesn't exist: ", filePath);
-          downloadQueue.push(recordingId);
-          downloadNameQueue.push(recordingName);
+    // Sanitize existing filenames so they match properly.
+    await renameFilesInDirectory(downloadPath)
+    .then(async () => {
+      for await (const recording of recordingList) {
+      
+        const recordingName = sanitizeFilename(recording.recordingName);
+        const recordingId = recording.recordingId;
+        const filePath = path.join(downloadPath, `${recordingName}.mp4`);
+        // console.log(filePath);
+        try {
+          // console.log(filePath.replace(/'/g, "\\'"));
+          if (await fs.existsSync(filePath)) {
+            deletableRecordings.push(recordingName);
+          } else {
+            // console.log(`pushing to download queue recordingId: ${recordingId}`);
+            console.log("filepath doesn't exist: ", filePath);
+            downloadQueue.push(recordingId);
+            downloadNameQueue.push(recordingName);
+          }
+        } catch (err) {
+          console.error(err);
         }
-      } catch (err) {
-        console.error(err);
       }
-    }
+    })
 
     const queues = [deletableRecordings, downloadQueue, downloadNameQueue];
     return queues;
@@ -198,7 +236,7 @@ const startPuppeteer = async () => {
   const finalPrintQueues = (queues) => {
     const [deletableRecordings, downloadQueue, downloadNameQueue] = queues;
     console.log(
-      'After processing the download queue size is :' + downloadQueue.length
+      'After processing the download queue size is : ' + downloadQueue.length
     );
     // create email if there are failed downloads
     let message = `${downloadNameQueue.length} recordings could not download:
@@ -208,8 +246,8 @@ const startPuppeteer = async () => {
       message += `${name}`;
     }
     console.log(message);
-
-    if (downloadNameQueue.length > 0) {
+    if (!isArrayEmpty(downloadNameQueue)) {
+      console.log(downloadNameQueue.length)
       send_email(message);
     }
     console.log('==== downloads stopped at ' + new Date() + ' ====');
@@ -266,6 +304,6 @@ const send_email = async (content) => {
 try {
   startPuppeteer();
 } catch (err) {
-  send_email(err.toString());
+  await send_email(err.toString());
   console.error(err);
 }
