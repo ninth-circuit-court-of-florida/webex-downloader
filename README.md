@@ -1,17 +1,35 @@
-# webex-downloader
+# Webex Recording Downloader
 
-Automatic webex recording archiver using puppeteer
+Webex Recording Downloader is a simple tool that automates the process of downloading Webex recordings using Puppeteer. This project is provided as-is, and you are welcome to use and modify it according to your needs.
 
-create a .env or pass env variables for:
+## Prerequisites
+Docker and Docker Compose
+Examples:
+- https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-22-04
+- https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-compose-on-ubuntu-22-04
 
-- WEBEX_USER=""
-- WEBEX_PASS=""
-- ORG_NAME=""
-- SMTP_SERVER=""
-- SMTP_PORT=""
-- SMTP_SECURE=""
-- SMTP_USER=""
-- SMTP_PASS=""
-- SMTP_TLS=""
-- MAIL_FROM=""
-- MAIL_TO=""
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/ninth-circuit-court-of-florida/webex-downloader.git
+```
+
+2. Bootstrap the container
+```bash
+cd webex-downloader
+cd container
+chmod +x bootstrap.sh
+./bootstrap.sh
+```
+
+3. Edit the .env file inside container/code appropriately or include env variables in your compose file
+
+4. Edit the docker-compose.yml for your recordings download location.
+
+5. Build the image and run it and check the logs
+```bash
+docker compose build
+docker compose up -d
+docker compose logs --follow
+```

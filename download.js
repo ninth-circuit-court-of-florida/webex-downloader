@@ -247,7 +247,6 @@ const startPuppeteer = async () => {
     }
     console.log(message);
     if (!isArrayEmpty(downloadNameQueue)) {
-      console.log(downloadNameQueue.length)
       send_email(message);
     }
     console.log('==== downloads stopped at ' + new Date() + ' ====');

@@ -1,0 +1,13 @@
+version: '3'
+services:
+  downloader:
+    container_name: webexdownloader
+    build: ./build
+    volumes:
+      - ./code:/puppeteer
+      - CHANGE_TO_RECORDING_LOCATION:/recordings
+    stdin_open: true
+    tty: true
+    cap_add:
+      - SYS_ADMIN # required for chrome to download
+    command: sh -c "/puppeteer/start.sh"
