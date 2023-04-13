@@ -12,6 +12,13 @@ const log_space = () => {
   }
 };
 
+const waitForElementByText = async (page, elementType, text) => {
+  return await page.waitForFunction((elType, elText) => {
+    const elements = Array.from(document.querySelectorAll(elType));
+    return elements.find(element => element.textContent.trim() === elText && element.classList.contains('md-button__children'));
+  }, {}, elementType, text);
+};
+
 const startPuppeteer = async () => {
   await log_space();
   console.log('==== reassignment started at ' + new Date() + ' ====');
@@ -35,10 +42,8 @@ const startPuppeteer = async () => {
   const loginUserSelector = '#md-input-0';
   await page.waitForSelector(loginUserSelector);
   await page.type(loginUserSelector, process.env.WEBEX_USER); // enter username
-  const submitUserSelector =
-    'body > webex-root > ng-component > webex-auth-feature-layout > main > form > button > span';
-  await page.waitForSelector(submitUserSelector);
-  await page.click(submitUserSelector);
+  const signInButton = await waitForElementByText(page, 'span', 'Sign In');
+  await signInButton.click();
 
   // login part 2/2
   const loginPassSelector = '#IDToken2';
